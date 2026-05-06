@@ -163,13 +163,22 @@ class ReaderRunner:
         self._dev = evdev.InputDevice(path)
         self._dev.grab()
         # Open a pty + symlink to the configured stable path
-        self._master_fd, self._slave_fd = pty.openpty()
-        self._slave_path = os.ttyname(self._slave_fd)
+        self._master_fd, slave_fd = pty.openpty()
+        self._slave_path = os.ttyname(slave_fd)
         try:
             mode = int(self.cfg.output.linux.permissions, 8)
         except ValueError:
             mode = 0o666
         os.chmod(self._slave_path, mode)
+        # Close OUR slave fd — we never read from it, the consumer
+        # (Odoo.ErpNet.FP, Odoo POS, fiscal driver) opens the slave
+        # path independently. Keeping our slave fd open made pyserial
+        # on the consumer side hit "device reports readiness but no
+        # data" because two readers fought for each byte. The pty
+        # stays alive as long as master is open — closing slave is
+        # safe.
+        os.close(slave_fd)
+        self._slave_fd = None
         symlink = self.cfg.output.linux.symlink
         if os.path.islink(symlink) or os.path.exists(symlink):
             try:
