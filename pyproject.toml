@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hid2serial"
+version = "0.1.0"
+description = "Daemon that turns a USB HID barcode scanner into a virtual serial port (pty on Linux, com0com on Windows)."
+readme = "README.md"
+license = { text = "LGPL-3.0-or-later" }
+authors = [{ name = "Rosen Vladimirov", email = "vladimirov.rosen@gmail.com" }]
+keywords = ["barcode", "hid", "serial", "pty", "scanner", "pos", "fiscal-printer"]
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+    "pydantic>=2.5",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+linux = ["evdev>=1.6", "pyinotify>=0.9.6"]
+windows = ["pywin32>=306"]
+dev = ["pytest>=8", "hypothesis>=6", "ruff>=0.4", "mypy>=1.10"]
+
+[project.scripts]
+hid2serial = "hid2serial.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/rosenvladimirov/hid2serial"
+Repository = "https://github.com/rosenvladimirov/hid2serial.git"
+Issues = "https://github.com/rosenvladimirov/hid2serial/issues"
+
+[tool.setuptools.packages.find]
+include = ["hid2serial*"]
+
+[tool.setuptools.package-data]
+hid2serial = ["py.typed"]

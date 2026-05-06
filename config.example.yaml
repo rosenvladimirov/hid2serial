@@ -1,0 +1,56 @@
+# /etc/hid2serial/config.yaml
+#
+# One entry per physical scanner. Each grabs its /dev/input/event* node
+# exclusively and exposes a virtual serial port that consumers (Odoo POS
+# / fiscal printer / legacy COM-style apps) can open as a normal serial
+# device.
+#
+# Matching rules — pick ONE per reader (or combine for ambiguity-free
+# selection):
+#   device_path  Pinpoint a specific /dev/input/event* path. Most stable
+#                if the scanner stays in the same USB port.
+#   vid + pid    USB vendor/product IDs. Survives port changes.
+#   name_regex   Regex against the kernel-reported device name. Use as
+#                last-resort when VID/PID isn't known yet.
+
+global:
+  log_level: INFO
+  # log_file: /var/log/hid2serial.log
+
+readers:
+  # Example 1 — Honeywell Voyager 1450g, US QWERTY, ENTER terminator.
+  # Output mapped to /dev/ttyV0 with mode 0666 so non-root processes
+  # (e.g. Odoo running under `odoo` user) can read it.
+  - name: pos1-cashier
+    match:
+      vid: 0x0c2e        # Honeywell
+      # pid: 0x0b6a      # uncomment if you want to lock to one model
+      name_regex: "Honeywell|Voyager"
+    output:
+      linux:
+        symlink: /dev/ttyV0
+        permissions: "0666"
+    framing:
+      terminator: "\r\n"
+      strip_prefix: ""
+      strip_suffix: ""
+      max_length: 4096
+    keymap:
+      force: us
+      caps_lock_strategy: ignore
+
+  # Example 2 — Datalogic QuickScan QD2430 with CR-only terminator,
+  # routed to /dev/ttyV1 for a fiscal-printer relay process.
+  # - name: pos2-warehouse
+  #   match:
+  #     vid: 0x05f9      # Datalogic
+  #     name_regex: "Datalogic|QuickScan"
+  #   output:
+  #     linux:
+  #       symlink: /dev/ttyV1
+  #       permissions: "0666"
+  #   framing:
+  #     terminator: "\r"
+  #   keymap:
+  #     force: us
+  #     caps_lock_strategy: ignore

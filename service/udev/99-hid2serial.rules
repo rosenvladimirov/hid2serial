@@ -1,0 +1,33 @@
+# /etc/udev/rules.d/99-hid2serial.rules
+#
+# Mark configured HID barcode scanners so the hid2serial systemd unit
+# can `evdev.grab()` their /dev/input/event* nodes without running as
+# root. Add one line per scanner family you ship — match by vendor +
+# product ID. The TAG+="systemd" entry causes udev to (re-)trigger the
+# unit on plug events so it can re-enumerate.
+#
+# Examples below. Uncomment and adjust the IDs you actually deploy.
+
+# --- Honeywell (Voyager / Eclipse / Xenon) ---
+# KERNEL=="event*", SUBSYSTEM=="input", ATTRS{idVendor}=="0c2e", \
+#   GROUP="input", MODE="0660", TAG+="systemd"
+
+# --- Datalogic (QuickScan / Gryphon) ---
+# KERNEL=="event*", SUBSYSTEM=="input", ATTRS{idVendor}=="05f9", \
+#   GROUP="input", MODE="0660", TAG+="systemd"
+
+# --- Symbol/Zebra (LS / DS series) ---
+# KERNEL=="event*", SUBSYSTEM=="input", ATTRS{idVendor}=="05e0", \
+#   GROUP="input", MODE="0660", TAG+="systemd"
+
+# --- Newland (NLS-HR / NLS-FM) ---
+# KERNEL=="event*", SUBSYSTEM=="input", ATTRS{idVendor}=="1eab", \
+#   GROUP="input", MODE="0660", TAG+="systemd"
+
+# --- Mindeo (MD series) ---
+# KERNEL=="event*", SUBSYSTEM=="input", ATTRS{idVendor}=="2dd6", \
+#   GROUP="input", MODE="0660", TAG+="systemd"
+
+# --- Argox ---
+# KERNEL=="event*", SUBSYSTEM=="input", ATTRS{idVendor}=="1664", \
+#   GROUP="input", MODE="0660", TAG+="systemd"

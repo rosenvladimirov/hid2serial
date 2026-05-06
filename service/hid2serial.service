@@ -1,0 +1,23 @@
+[Unit]
+Description=hid2serial — HID barcode reader to virtual serial port
+Documentation=https://github.com/rosenvladimirov/hid2serial
+After=systemd-udevd.service local-fs.target
+Wants=systemd-udevd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/hid2serial run --config /etc/hid2serial/config.yaml
+Restart=on-failure
+RestartSec=2
+# Needs evdev access. Either run as root, OR put the service user in
+# the `input` group AND deploy the udev rule under service/udev/.
+User=root
+Group=root
+# The pty + symlink need /dev write — keep this minimal otherwise.
+PrivateDevices=no
+ProtectSystem=strict
+ReadWritePaths=/dev /var/log
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
