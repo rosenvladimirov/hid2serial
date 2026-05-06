@@ -43,8 +43,13 @@ from collections import deque
 from ctypes import wintypes
 from typing import Optional
 
+import json
+import queue
+import urllib.error
+import urllib.request
+
 try:
-    import serial  # pyserial — used for com0com COMx writes
+    import serial  # pyserial — only used by the legacy/deprecated com0com path
 except ImportError:  # pragma: no cover
     serial = None
 
@@ -405,34 +410,128 @@ class _SuppressionHook:
             self._hHook = None
 
 
+class _HttpSink:
+    """Background worker that POSTs barcode lines to a proxy endpoint.
+
+    Decouples the WM_INPUT message handler from network latency so a
+    slow / unreachable proxy never blocks the keyboard hook. Drops
+    scans on the floor (with a warning) if the queue overflows — the
+    barcode is also captured in `hid2serial.log` so nothing is lost.
+    """
+
+    _SENTINEL = object()
+
+    def __init__(
+        self,
+        url: str,
+        timeout_s: float,
+        headers: dict,
+        verify_tls: bool,
+        reader_name: str,
+    ) -> None:
+        self._url = url
+        self._timeout = timeout_s
+        self._headers = {"Content-Type": "application/json", **headers}
+        self._verify_tls = verify_tls
+        self._name = reader_name
+        self._q: "queue.Queue[object]" = queue.Queue(maxsize=200)
+        self._thread = threading.Thread(
+            target=self._loop,
+            name=f"HttpSink[{reader_name}]",
+            daemon=True,
+        )
+        # ssl context — only consulted when target is https
+        self._ssl_ctx = None
+        if url.lower().startswith("https://") and not verify_tls:
+            import ssl
+            self._ssl_ctx = ssl.create_default_context()
+            self._ssl_ctx.check_hostname = False
+            self._ssl_ctx.verify_mode = ssl.CERT_NONE
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._q.put(self._SENTINEL)
+        self._thread.join(timeout=2.0)
+
+    def submit(self, text: str) -> None:
+        try:
+            self._q.put_nowait(text)
+        except queue.Full:
+            _logger.warning(
+                "Reader %r: HTTP sink queue full, dropping scan %r",
+                self._name, text,
+            )
+
+    def _loop(self) -> None:
+        while True:
+            item = self._q.get()
+            if item is self._SENTINEL:
+                return
+            try:
+                self._post(item)  # type: ignore[arg-type]
+            except Exception:  # noqa: BLE001
+                _logger.exception(
+                    "Reader %r: HTTP sink unexpected error", self._name,
+                )
+
+    def _post(self, text: str) -> None:
+        body = json.dumps({"text": text}).encode("utf-8")
+        req = urllib.request.Request(
+            self._url, data=body, headers=self._headers, method="POST",
+        )
+        try:
+            with urllib.request.urlopen(
+                req, timeout=self._timeout, context=self._ssl_ctx,
+            ) as resp:
+                if resp.status >= 400:
+                    _logger.warning(
+                        "Reader %r: proxy returned %d for scan %r",
+                        self._name, resp.status, text,
+                    )
+        except urllib.error.URLError as exc:
+            _logger.warning(
+                "Reader %r: proxy POST failed (%s) — scan %r dropped",
+                self._name, exc, text,
+            )
+
+
 class ReaderRunner:
-    """Windows ReaderRunner — RawInput + line buffer + COMx writer.
+    """Windows ReaderRunner — RawInput + line buffer + HTTP sink.
 
     Mirror of Linux ReaderRunner from `linux.py` but Win-specific:
     instead of evdev grab + pty, we register RawInput for the scanner's
-    HID handle, run a message pump, and write barcodes to a com0com
-    side-A COM port via pyserial.
+    HID handle, run a message pump, and POST each barcode line to the
+    proxy's external-reader inject endpoint. No kernel driver, no
+    virtual COM port, no signing concerns.
+
+    The legacy com0com COM-pair output mode is kept for backward compat
+    but is not the recommended path and is not exercised by the
+    Windows installer's default config.
     """
 
     def __init__(self, cfg: ReaderConfig) -> None:
         if os.name != "nt":
             raise RuntimeError("Windows backend can only run on Windows")
-        if serial is None:
-            raise RuntimeError("pyserial is required for COMx writes")
-        if cfg.output.windows is None or not cfg.output.windows.com_pair:
+        out = cfg.output
+        if out.http is None and (out.windows is None or not out.windows.com_pair):
             raise ValueError(
-                f"Reader {cfg.name!r}: output.windows.com_pair "
-                "must be set to [<input-side-pair>, <consumer-side-COM>]"
+                f"Reader {cfg.name!r}: configure either output.http.url "
+                f"(recommended) or output.windows.com_pair (legacy com0com)"
             )
         self.cfg = cfg
-        # First entry of com_pair is the side WE write to (e.g. CNCA0
-        # in com0com terminology), second is the side the consumer
-        # opens. We don't write to the second.
-        self._comx = cfg.output.windows.com_pair[0]
+        self._mode: str = "http" if out.http is not None else "com"
+        self._comx: Optional[str] = (
+            out.windows.com_pair[0]
+            if self._mode == "com" and out.windows
+            else None
+        )
         self._h_device: Optional[int] = None
         self._win: Optional[_MessageWindow] = None
         self._hook: Optional[_SuppressionHook] = None
         self._serial: Optional["serial.Serial"] = None
+        self._http: Optional[_HttpSink] = None
         self._buf = LineBuffer(cfg.framing)
         self._recent_scancodes: deque = deque(maxlen=64)
         self._shift = False
@@ -444,7 +543,22 @@ class ReaderRunner:
             raise FileNotFoundError(
                 f"Reader {self.cfg.name!r}: no matching HID keyboard"
             )
-        self._serial = serial.Serial(self._comx, baudrate=9600, timeout=0)
+        if self._mode == "http":
+            cfg_http = self.cfg.output.http  # type: ignore[union-attr]
+            self._http = _HttpSink(
+                url=cfg_http.url,
+                timeout_s=cfg_http.timeout_s,
+                headers=cfg_http.headers,
+                verify_tls=cfg_http.verify_tls,
+                reader_name=self.cfg.name,
+            )
+            self._http.start()
+        else:
+            if serial is None:
+                raise RuntimeError("pyserial is required for the com0com path")
+            self._serial = serial.Serial(
+                self._comx, baudrate=9600, timeout=0,
+            )
 
         # Spin up message-only window first so RegisterRawInputDevices
         # has a valid hwnd target.
@@ -463,11 +577,6 @@ class ReaderRunner:
         ):
             raise OSError("RegisterRawInputDevices failed")
 
-        respect_caps = self.cfg.keymap.caps_lock_strategy == "respect"
-        if not respect_caps:
-            # We always intercept Caps; nothing to install
-            pass
-
         # Install suppression hook so the scanner doesn't ALSO type into
         # the focused window. Toggling redirect off via tray will stop
         # the daemon and the hook unloads.
@@ -475,8 +584,10 @@ class ReaderRunner:
         self._hook.install()
 
         _logger.info(
-            "Reader %r: hDevice=0x%x → COM %s (suppress=on)",
-            self.cfg.name, self._h_device, self._comx,
+            "Reader %r: hDevice=0x%x → %s (suppress=on)",
+            self.cfg.name, self._h_device,
+            f"HTTP {self.cfg.output.http.url}" if self._mode == "http"
+            else f"COM {self._comx}",
         )
 
     def stop(self) -> None:
@@ -489,6 +600,12 @@ class ReaderRunner:
         if self._win:
             self._win.stop()
             self._win = None
+        if self._http:
+            try:
+                self._http.stop()
+            except Exception:
+                pass
+            self._http = None
         if self._serial:
             try:
                 self._serial.close()
@@ -539,12 +656,23 @@ class ReaderRunner:
             return
         if scancode in TERMINATOR_KEYS:
             line = self._buf.flush()
-            if line is not None and self._serial is not None:
+            if line is None:
+                return
+            if self._http is not None:
+                # Strip any trailing terminator the LineBuffer kept;
+                # the proxy adds its own newline semantics.
+                self._http.submit(line.rstrip("\r\n"))
+                _logger.debug(
+                    "Reader %r emitted %r → HTTP queue",
+                    self.cfg.name, line,
+                )
+            elif self._serial is not None:
                 try:
                     self._serial.write(line.encode("utf-8"))
                     self._serial.flush()
                     _logger.debug(
-                        "Reader %r emitted %r", self.cfg.name, line,
+                        "Reader %r emitted %r → COM",
+                        self.cfg.name, line,
                     )
                 except Exception as exc:
                     _logger.warning(

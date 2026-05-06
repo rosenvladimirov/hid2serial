@@ -61,10 +61,30 @@ class WindowsOutputConfig(BaseModel):
     com_pair: list[str] = Field(default_factory=list)  # [CNCA0, COM21]
 
 
+class HttpOutputConfig(BaseModel):
+    """POST each scan to the proxy's external-reader inject endpoint.
+
+    No kernel driver, no virtual serial port, no signing concerns —
+    works the same on Windows / Linux / macOS / ARM. Recommended
+    transport for the Windows backend (replaces the deprecated
+    com0com path, which was never tested on real hardware).
+
+    The matching reader on the proxy side must be configured with
+    `transport: external` so it accepts injects on
+    `POST /readers/{id}/inject`.
+    """
+    model_config = ConfigDict(extra="forbid")
+    url: str                                    # full inject URL
+    timeout_s: float = 2.0
+    headers: dict[str, str] = Field(default_factory=dict)  # e.g. {"Authorization": "Bearer ..."}
+    verify_tls: bool = True                     # set False for self-signed dev certs
+
+
 class OutputConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     linux: Optional[LinuxOutputConfig] = None
     windows: Optional[WindowsOutputConfig] = None
+    http: Optional[HttpOutputConfig] = None
 
 
 class ReaderConfig(BaseModel):

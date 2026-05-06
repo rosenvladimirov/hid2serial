@@ -1,0 +1,36 @@
+# Visual Studio / WDK build artifacts
+**/x64/
+**/x86/
+**/Debug/
+**/Release/
+**/*.suo
+**/*.user
+**/*.userprefs
+**/.vs/
+**/*.vcxproj.filters
+**/*.aps
+
+# Driver-specific build outputs
+**/*.dll
+**/*.sys
+**/*.cat
+**/*.pdb
+**/*.lib
+**/*.exp
+**/*.ilk
+**/*.idb
+**/*.obj
+**/*.o
+
+# Generated INF (we keep the source .inx; build produces .inf)
+**/*.inf
+!**/src/**/*.inx
+
+# Signing artifacts (NEVER commit private keys)
+**/*.pfx
+**/*.snk
+**/*.spc
+
+# Test outputs
+test/output/
+test/logs/

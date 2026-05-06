@@ -1,0 +1,46 @@
+# C:\ProgramData\hid2serial\config.yaml
+#
+# Default Windows configuration for hid2serial. Uses the HTTP output
+# mode — every scanned barcode is POSTed straight to the proxy's
+# external-reader inject endpoint. No virtual serial driver, no
+# com0com, no kernel components, no signing concerns.
+#
+# Requirements on the consumer side:
+#   1. Odoo.ErpNet.FP proxy reachable from this machine (default
+#      assumes it runs locally on http://127.0.0.1:8001).
+#   2. The matching reader on the proxy MUST be configured with
+#      `transport: external` so it accepts injects on
+#      POST /readers/<id>/inject. Example proxy entry:
+#
+#        readers:
+#          - id: scanner1
+#            transport: external
+#            webhooks: []
+#
+#   3. The `id` value above must match the URL path below.
+#
+# If you have a dedicated proxy on the LAN, replace 127.0.0.1 with the
+# proxy host. https://… URLs are supported; set verify_tls: false for
+# self-signed certs (e.g. https://erpnet.lan.mcpworks.net).
+
+global:
+  log_level: INFO
+  # log_file: C:\ProgramData\hid2serial\hid2serial.log
+
+readers:
+  - name: scanner1
+    match:
+      any_external: true     # any HID keyboard that isn't internal
+    output:
+      http:
+        url: http://127.0.0.1:8001/readers/scanner1/inject
+        timeout_s: 2.0
+        # headers:
+        #   Authorization: "Bearer <proxy-bearer-token>"
+        # verify_tls: false  # uncomment for self-signed dev certs
+    framing:
+      terminator: "\r\n"
+      max_length: 4096
+    keymap:
+      force: us
+      caps_lock_strategy: ignore
