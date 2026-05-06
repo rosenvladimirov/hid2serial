@@ -28,10 +28,13 @@ unpairing the BLE link.
 
 from __future__ import annotations
 
+import json
 import os
 import signal
 import subprocess
 import threading
+import urllib.error
+import urllib.request
 
 import gi  # type: ignore[import-not-found]
 
@@ -47,6 +50,17 @@ ICON_RUNNING = "input-keyboard-symbolic"  # symbolic theme icons; available on e
 ICON_STOPPED = "input-mouse-symbolic"
 APP_ID = "hid2serial-tray"
 REFRESH_INTERVAL_S = 2.0
+
+# Where the tray sends "Reconnect proxy reader" pokes. Read from
+# environment so packagers / advanced users can override without
+# editing the source. The reader id defaults to 'scanner1' which
+# matches the value our installer / generated config uses, but is
+# also overridable.
+PROXY_RESET_URL = os.environ.get(
+    "HID2SERIAL_PROXY_RESET_URL",
+    "http://127.0.0.1:8001/readers/scanner1/reset",
+)
+PROXY_RESET_TIMEOUT_S = 3.0
 
 
 def _systemctl(*args: str) -> tuple[int, str, str]:
@@ -135,6 +149,15 @@ class Tray:
         self.toggle_item.connect("activate", self._on_toggle)
         self.menu.append(self.toggle_item)
 
+        # Fallback button — POSTs to the proxy's /readers/<id>/reset
+        # so it drops its current fd and re-attaches to the (newly
+        # created) pty. Used when the proxy is stuck holding a dead
+        # fd from before a daemon restart and the auto-reconnect
+        # heuristic hasn't yet triggered.
+        self.poke_item = Gtk.MenuItem(label="Reconnect proxy reader")
+        self.poke_item.connect("activate", self._on_poke_proxy)
+        self.menu.append(self.poke_item)
+
         self.menu.append(Gtk.SeparatorMenuItem())
 
         item_cfg = Gtk.MenuItem(label="Open config…")
@@ -188,6 +211,42 @@ class Tray:
         ).start()
         # Schedule a refresh in 1.5s so the icon catches up after pkexec finishes
         GLib.timeout_add_seconds(2, self._refresh)
+
+    def _on_poke_proxy(self, _) -> None:
+        """Send a reset POST to the proxy in a background thread —
+        the GUI never blocks on the network call. Notify the user
+        with a transient menu-label tweak afterwards."""
+        def _runner() -> None:
+            try:
+                req = urllib.request.Request(
+                    PROXY_RESET_URL,
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                    data=b"{}",
+                )
+                with urllib.request.urlopen(
+                    req, timeout=PROXY_RESET_TIMEOUT_S,
+                ) as resp:
+                    ok = 200 <= resp.status < 300
+                    msg = "Reconnect proxy reader (✓)" if ok else \
+                          f"Reconnect proxy reader (HTTP {resp.status})"
+            except urllib.error.URLError as exc:
+                msg = f"Reconnect proxy reader (unreachable: {exc.reason})"
+            except Exception as exc:  # noqa: BLE001
+                msg = f"Reconnect proxy reader (err: {exc})"
+
+            def _show() -> bool:
+                self.poke_item.set_label(msg)
+                # Restore the original label after 3 s so the menu stays clean.
+                GLib.timeout_add_seconds(
+                    3,
+                    lambda: (self.poke_item.set_label("Reconnect proxy reader"), False)[1],
+                )
+                return False
+
+            GLib.idle_add(_show)
+
+        threading.Thread(target=_runner, daemon=True).start()
 
     def _on_about(self, _) -> None:
         dlg = Gtk.AboutDialog()
