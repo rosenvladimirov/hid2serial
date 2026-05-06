@@ -68,11 +68,28 @@ def list_keyboard_devices() -> list[dict]:
 # Hints used to skip internal devices when `any_external: true`.
 # Ordered by likelihood — speeds up the scan loop when the laptop
 # kbd / mouse appear before the scanner in evdev's enumeration.
+#
+# Strategy is "exclude known-not-scanner" rather than "include known-
+# scanner" because barcode-scanner names are wildly inconsistent (no-
+# name BLE devices may report just their MAC, OEM USB scanners may
+# report nothing at all). Bias is therefore towards skipping anything
+# that looks like a regular keyboard/mouse/system button.
 _INTERNAL_HINTS = (
+    # Laptop / desktop integrated devices
     "translated", "trackpoint", "trackpad", "touchpad",
-    "lid switch", "video bus", "fn key", "power button", "sleep button",
-    "yubikey", "wireless mouse", "mouse pid",
-    "logitech wireless mouse", "logitech wireless keyboard",
+    "lid switch", "video bus", "fn key",
+    "power button", "sleep button", "thinkpad",
+    # Common security tokens
+    "yubikey", "fido",
+    # Mice (any vendor) — never barcode scanners
+    "mouse",
+    # Brand-name keyboards (Logitech / Apple / Microsoft) — these are
+    # regular kbds, not barcode scanners. Note: this filters out
+    # well-known *generic* keyboard product strings; no-name barcode
+    # scanners typically don't carry these brand strings.
+    "logitech wireless keyboard", "apple keyboard", "microsoft natural",
+    "magic keyboard", "magic trackpad",
+    # HID-class control surfaces present on every modern laptop
     "consumer control", "system control",
 )
 
