@@ -41,6 +41,13 @@ class MatchConfig(BaseModel):
     vid: Optional[int] = None           # accepts decimal or 0xNNNN
     pid: Optional[int] = None
     device_path: Optional[str] = None   # explicit /dev/input/eventN
+    # Generic catch-all: match the first connected HID-keyboard device
+    # that is NOT an internal laptop kbd / trackpad / yubikey / etc.
+    # Useful for no-name BLE scanners that don't expose a useful vid /
+    # pid / name. Scanners ship with random vendor IDs, so vendor-keyed
+    # matching is brittle; empty `match: {}` or `any_external: true`
+    # handles 95% of POS deployments without per-device config.
+    any_external: bool = False
 
 
 class LinuxOutputConfig(BaseModel):

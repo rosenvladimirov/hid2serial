@@ -1,0 +1,28 @@
+// /etc/polkit-1/rules.d/40-hid2serial.rules
+//
+// Allow members of the `hid2serial` group to start / stop / restart
+// the hid2serial.service unit without being prompted for a password.
+//
+// Effect: the tray app's "Toggle redirect" action becomes a one-click
+// no-prompt operation for any user we add to that group. Other users
+// still get the standard pkexec password prompt.
+//
+// Rationale: the tray runs as the desktop user, but the daemon needs
+// root (evdev grab + pty creation in /dev). Standard pkexec policy
+// requires authentication for every systemctl action — annoying for
+// a power-toggle workflow. This rule narrows the bypass to ONE unit
+// only, so granting the `hid2serial` group is a small surface area.
+
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.isInGroup("hid2serial")) {
+        var unit = action.lookup("unit");
+        if (unit == "hid2serial.service") {
+            var verb = action.lookup("verb");
+            if (verb == "start" || verb == "stop" ||
+                verb == "restart" || verb == "reload") {
+                return polkit.Result.YES;
+            }
+        }
+    }
+});

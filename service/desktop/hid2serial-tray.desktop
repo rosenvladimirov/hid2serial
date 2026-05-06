@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=hid2serial Tray
+Comment=Toggle HID scanner → virtual serial-port redirect
+Exec=hid2serial tray
+Icon=input-keyboard-symbolic
+Terminal=false
+Categories=Utility;System;
+StartupNotify=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true

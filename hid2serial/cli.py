@@ -122,6 +122,167 @@ def list_readers():
 
 
 @app.command()
+def bootstrap(
+    config_path: Path = typer.Option(
+        Path("/etc/hid2serial/config.yaml"), "-c", "--config",
+        help="Where to write the generated config.",
+    ),
+    pty: str = typer.Option(
+        "/dev/ttyV0", "--pty",
+        help="Symlink path for the virtual serial port.",
+    ),
+    force: bool = typer.Option(
+        False, "--force",
+        help="Overwrite an existing config.",
+    ),
+    specific: bool = typer.Option(
+        False, "--specific",
+        help="Pin the config to the currently connected scanner's "
+             "vid+pid+name (instead of the generic any-external match).",
+    ),
+):
+    """Generate a sensible config.yaml.
+
+    Default mode: writes a GENERIC config that grabs whatever HID
+    keyboard is currently connected and isn't an internal device
+    (laptop kbd, trackpad, YubiKey, mouse, etc.). Works with any
+    no-name barcode scanner — most real-world POS deployments.
+
+    `--specific`: pins the match to the currently-connected device's
+    vid + pid + name. Useful when multiple scanners are present and
+    you want to disambiguate.
+
+    If `config_path` already exists and `--force` is not given, exits
+    without changes.
+    """
+    if config_path.exists() and not force:
+        typer.echo(f"Config already exists at {config_path} — not overwriting.")
+        raise typer.Exit(0)
+
+    try:
+        from .linux import list_keyboard_devices, _looks_internal
+    except ImportError:
+        typer.echo("evdev not installed — bootstrap is Linux only.", err=True)
+        raise typer.Exit(2)
+
+    detected = [d for d in list_keyboard_devices() if not _looks_internal(d)]
+    if specific and not detected:
+        typer.echo(
+            "No external HID keyboard detected — cannot generate a "
+            "specific config. Plug in the scanner and re-run.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    if specific:
+        primary = detected[0]
+        config_path.write_text(_render_specific(primary, pty))
+        typer.echo(
+            f"Wrote {config_path} (specific match) for "
+            f"{primary['name']!r} vid=0x{primary['vid']:04x} "
+            f"pid=0x{primary['pid']:04x}"
+        )
+    else:
+        config_path.write_text(_render_generic(pty, detected))
+        if detected:
+            sample = detected[0]
+            typer.echo(
+                f"Wrote {config_path} (generic any-external match). "
+                f"At install time the daemon will pick: "
+                f"{sample['name']!r}"
+            )
+        else:
+            typer.echo(
+                f"Wrote {config_path} (generic any-external match). "
+                "No scanner connected yet — daemon will pick the first "
+                "external HID keyboard when one appears."
+            )
+
+
+def _render_specific(d: dict, pty: str) -> str:
+    """Pin to one specific device by vid+pid+name."""
+    import re as _re
+    name = d.get("name") or ""
+    first_word = name.split()[0] if name else "Scanner"
+    safe_word = _re.escape(first_word)
+    return f"""global:
+  log_level: INFO
+
+readers:
+  - name: scanner1
+    match:
+      vid: 0x{d['vid']:04x}
+      pid: 0x{d['pid']:04x}
+      name_regex: "{safe_word}"
+    output:
+      linux:
+        symlink: {pty}
+        permissions: "0666"
+    framing:
+      terminator: "\\r\\n"
+      max_length: 4096
+    keymap:
+      force: us
+      caps_lock_strategy: ignore
+"""
+
+
+def _render_generic(pty: str, detected: list) -> str:
+    """Generic config that grabs any non-internal HID keyboard.
+
+    Works with no-name BLE scanners that have generic vid 0x000d and
+    don't expose a useful product name, and with USB scanners from
+    Honeywell / Datalogic / Symbol / Newland / Mindeo / Argox / Mertech
+    / random Chinese OEMs without per-device config.
+    """
+    summary = ""
+    if detected:
+        summary = "# Currently connected external HID keyboards (FYI):\n"
+        for d in detected:
+            summary += (
+                f"#   - {d['name']!r}: vid=0x{d['vid']:04x} pid=0x{d['pid']:04x}\n"
+            )
+        summary += "#\n"
+    return f"""global:
+  log_level: INFO
+
+# Generic config — grabs the first connected HID keyboard that's not an
+# internal device (laptop kbd, trackpad, YubiKey, mouse, etc.). Suitable
+# for most POS deployments where the scanner is the only external HID
+# keyboard plugged into the machine.
+#
+{summary}# To pin to a specific scanner instead, set `match: {{vid, pid, name_regex}}`
+# or run: `sudo hid2serial bootstrap --force --specific`
+
+readers:
+  - name: scanner1
+    match:
+      any_external: true
+    output:
+      linux:
+        symlink: {pty}
+        permissions: "0666"
+    framing:
+      terminator: "\\r\\n"
+      max_length: 4096
+    keymap:
+      force: us
+      caps_lock_strategy: ignore
+"""
+
+
+@app.command()
+def tray():
+    """Launch the system-tray app (Linux: GTK3 + Ayatana AppIndicator;
+    Wayland-compatible via StatusNotifierItem). Toggles the daemon
+    on/off so the same scanner can be used as a regular HID keyboard
+    when redirect is off."""
+    from . import tray as tray_mod
+    raise typer.Exit(tray_mod.main())
+
+
+@app.command()
 def doctor():
     """Report environment readiness."""
     try:

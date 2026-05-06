@@ -65,10 +65,44 @@ def list_keyboard_devices() -> list[dict]:
     return out
 
 
+# Hints used to skip internal devices when `any_external: true`.
+# Ordered by likelihood — speeds up the scan loop when the laptop
+# kbd / mouse appear before the scanner in evdev's enumeration.
+_INTERNAL_HINTS = (
+    "translated", "trackpoint", "trackpad", "touchpad",
+    "lid switch", "video bus", "fn key", "power button", "sleep button",
+    "yubikey", "wireless mouse", "mouse pid",
+    "logitech wireless mouse", "logitech wireless keyboard",
+    "consumer control", "system control",
+)
+
+
+def _looks_internal(d: dict) -> bool:
+    """Heuristic — is this an internal/peripheral device, not a barcode
+    scanner? Used by `any_external` matching mode."""
+    name = (d.get("name") or "").lower()
+    return any(hint in name for hint in _INTERNAL_HINTS)
+
+
 def resolve_device(cfg_match) -> Optional[str]:
     """Return the path of the first device matching the configured criteria."""
     if cfg_match.device_path:
         return cfg_match.device_path if os.path.exists(cfg_match.device_path) else None
+
+    # If no specific criteria given OR any_external is True, fall back
+    # to "first non-internal HID keyboard". Empty `match: {}` blocks
+    # also land here — the most user-friendly default.
+    no_specific = (
+        cfg_match.vid is None
+        and cfg_match.pid is None
+        and not cfg_match.name_regex
+    )
+    if cfg_match.any_external or no_specific:
+        for d in list_keyboard_devices():
+            if not _looks_internal(d):
+                return d["path"]
+        return None
+
     name_re = re.compile(cfg_match.name_regex, re.I) if cfg_match.name_regex else None
     for d in list_keyboard_devices():
         if cfg_match.vid is not None and d["vid"] != cfg_match.vid:
@@ -198,7 +232,12 @@ class ReaderRunner:
                     line = self._buf.flush()
                     if line is not None:
                         try:
-                            os.write(self._master_fd, line.encode("utf-8"))  # type: ignore[arg-type]
+                            os.write(
+                                self._master_fd, line.encode("utf-8")  # type: ignore[arg-type]
+                            )
+                            _logger.debug(
+                                "Reader %r emitted %r", self.cfg.name, line,
+                            )
                         except OSError as exc:
                             _logger.warning(
                                 "Reader %r pty write failed: %s",
