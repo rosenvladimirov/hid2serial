@@ -9,3 +9,5 @@ dist/
 .mypy_cache/
 .ruff_cache/
 *.log
+build/
+dist/*.exe
