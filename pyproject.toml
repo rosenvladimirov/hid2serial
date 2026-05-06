@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hid2serial"
-version = "0.1.4"
+version = "0.2.0-dev"
 description = "Daemon that turns a USB HID barcode scanner into a virtual serial port (pty on Linux, com0com on Windows)."
 readme = "README.md"
 license = { text = "LGPL-3.0-or-later" }
@@ -19,7 +19,12 @@ dependencies = [
 
 [project.optional-dependencies]
 linux = ["evdev>=1.6", "pyinotify>=0.9.6"]
-windows = ["pywin32>=306"]
+windows = [
+    "pywin32>=306",      # service framework + RawInput-related Win32 APIs
+    "pyserial>=3.5",     # writes to com0com COM port
+    "pystray>=0.19",     # cross-platform tray
+    "pillow>=10",        # icon rendering for pystray
+]
 dev = ["pytest>=8", "hypothesis>=6", "ruff>=0.4", "mypy>=1.10"]
 
 [project.scripts]
