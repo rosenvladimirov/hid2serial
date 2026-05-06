@@ -92,7 +92,22 @@ def run(
 
     stop = signal_event()
     while not stop.is_set():
-        time.sleep(0.5)
+        # Watchdog: if every reader's background thread has died (e.g.
+        # BLE scanner went to sleep and emitted ENODEV), exit non-zero
+        # so systemd's Restart=on-failure spawns a fresh process. The
+        # new instance will re-resolve /dev/input/event* and grab
+        # whichever node the scanner registered itself with on wake-up.
+        alive = sum(
+            1 for r in runners
+            if getattr(r, "_thread", None) and r._thread.is_alive()
+        )
+        if alive == 0:
+            log.error(
+                "All %d reader thread(s) have died — exiting for "
+                "systemd restart", len(runners),
+            )
+            raise typer.Exit(5)
+        time.sleep(2)
 
     log.info("Shutdown signalled — stopping %d reader(s)", len(runners))
     for r in runners:

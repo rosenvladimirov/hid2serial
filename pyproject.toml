@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hid2serial"
-version = "0.2.0-dev"
+version = "0.1.5"
 description = "Daemon that turns a USB HID barcode scanner into a virtual serial port (pty on Linux, com0com on Windows)."
 readme = "README.md"
 license = { text = "LGPL-3.0-or-later" }

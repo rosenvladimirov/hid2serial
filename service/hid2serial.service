@@ -7,8 +7,14 @@ Wants=systemd-udevd.service
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/hid2serial run --config /etc/hid2serial/config.yaml
-Restart=on-failure
-RestartSec=2
+Restart=always
+RestartSec=3
+# StartLimit doesn't trip — restart loops are EXPECTED when the BLE
+# scanner is asleep and event18 doesn't exist. The watchdog in the
+# CLI exits 5 when no readers are alive; systemd respawns and tries
+# again. When the scanner wakes (via trigger button or BLE keep-
+# alive), one of the restart cycles successfully grabs the device.
+StartLimitIntervalSec=0
 # Needs evdev access. Either run as root, OR put the service user in
 # the `input` group AND deploy the udev rule under service/udev/.
 User=root
