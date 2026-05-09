@@ -1,0 +1,124 @@
+;
+; hid2vsp.inf
+;
+; Phase 2 paired-port driver. A pair installs as two independent
+; root-enumerated devices (Root\hid2vsp_pair_a and Root\hid2vsp_pair_b),
+; both served by the same UMDF v2 driver. The two halves rendezvous in
+; the singleton DRIVER_CONTEXT (see driver.h / pair.c). They must run
+; in the same WUDFHost process for the rendezvous to work, so this
+; INF sets UmdfHostProcessSharing = ProcessSharingEnabled.
+;
+; Installation:
+;   pnputil /add-driver hid2vsp.inf /install
+;   pnputil /add-driver hid2vsp.inf /install     (a second time, with
+;                                                 a second hw ID, to
+;                                                 bring up both halves)
+; Or use a wrapper that calls devcon/pnputil for both Root\... IDs.
+;
+
+[Version]
+Signature="$Windows NT$"
+Class=Ports
+ClassGuid={4D36E978-E325-11CE-BFC1-08002BE10318}
+Provider=%ProviderString%
+CatalogFile=hid2vsp.cat
+DriverVer=05/09/2026,0.1.0.0
+PnpLockdown=1
+
+[Manufacturer]
+%ManufacturerString%=Microsoft,NT$ARCH$.10.0...17134,NT$ARCH$.10.0...22000
+
+[Microsoft.NT$ARCH$.10.0...17134]
+%hid2vspNameA%=hid2vsp_Install,     Root\hid2vsp_pair_a
+%hid2vspNameB%=hid2vsp_Install,     Root\hid2vsp_pair_b
+
+[Microsoft.NT$ARCH$.10.0...22000]
+%hid2vspNameA%=hid2vsp_Install_Win11,Root\hid2vsp_pair_a
+%hid2vspNameB%=hid2vsp_Install_Win11,Root\hid2vsp_pair_b
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[SourceDisksFiles]
+hid2vsp.dll=1
+
+[SourceDisksNames]
+1 = %MediaDescription%
+
+; =================== UMDF hid2vsp Device Win11 ============================
+[hid2vsp_Install_Win11.NT]
+CopyFiles=UMDriverCopy
+Include=WUDFRD.inf
+Needs=WUDFRD.NT
+
+[hid2vsp_Install_Win11.NT.hw]
+AddReg=SetDeviceType_AddReg
+Include=WUDFRD.inf
+Needs=WUDFRD.NT.HW
+
+[hid2vsp_Install_Win11.NT.Services]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT.Services
+
+[hid2vsp_Install_Win11.NT.Wdf]
+UmdfService                         = hid2vsp, hid2vsp_Umdf_Install
+UmdfServiceOrder                    = hid2vsp
+; Tighten attack surface — driver only serves user-mode COM consumers
+; (pyserial / MODE.COM / SerCx clients). HVCI / Smart App Control
+; signing reviewers ding AllowKernelModeClients on UMDF drivers that
+; don't actually need it.
+UmdfKernelModeClientPolicy          = RejectKernelModeClients
+UmdfFileObjectPolicy                = AllowNullAndUnknownFileObjects
+UmdfFsContextUsePolicy              = CannotUseFsContexts
+UmdfHostProcessSharing              = ProcessSharingEnabled
+
+; =================== UMDF hid2vsp Device (legacy) =========================
+[hid2vsp_Install.NT]
+CopyFiles=UMDriverCopy
+
+[hid2vsp_Install.NT.hw]
+AddReg=SetDeviceType_AddReg
+
+[hid2vsp_Install.NT.Services]
+AddService=WUDFRd,0x000001fa,WUDFRD_ServiceInstall
+
+[hid2vsp_Install.NT.Wdf]
+UmdfService                         = hid2vsp, hid2vsp_Umdf_Install
+UmdfServiceOrder                    = hid2vsp
+; Tighten attack surface — driver only serves user-mode COM consumers
+; (pyserial / MODE.COM / SerCx clients). HVCI / Smart App Control
+; signing reviewers ding AllowKernelModeClients on UMDF drivers that
+; don't actually need it.
+UmdfKernelModeClientPolicy          = RejectKernelModeClients
+UmdfFileObjectPolicy                = AllowNullAndUnknownFileObjects
+UmdfFsContextUsePolicy              = CannotUseFsContexts
+UmdfHostProcessSharing              = ProcessSharingEnabled
+
+[WUDFRD_ServiceInstall]
+DisplayName     = %WudfRdDisplayName%
+ServiceType     = 1
+StartType       = 3
+ErrorControl    = 1
+ServiceBinary   = %12%\WUDFRd.sys
+
+; =================== Shared Sections ====================================
+
+[hid2vsp_Umdf_Install]
+UmdfLibraryVersion=$UMDFVERSION$
+ServiceBinary=%13%\hid2vsp.dll
+
+[SetDeviceType_AddReg]
+HKR,,DeviceType,0x10001,0x0000001b   ; 0x1b = FILE_DEVICE_SERIAL_PORT
+
+[UMDriverCopy]
+hid2vsp.dll
+
+; =================== Generic ===========================================
+
+[Strings]
+ProviderString="hid2serial project"
+ManufacturerString="hid2serial project"
+MediaDescription="hid2serial Driver Installation Media"
+WudfRdDisplayName="Windows Driver Foundation - User-mode Driver Framework Reflector"
+hid2vspNameA="hid2vsp Virtual COM Port (side A)"
+hid2vspNameB="hid2vsp Virtual COM Port (side B)"

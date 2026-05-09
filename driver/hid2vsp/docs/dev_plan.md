@@ -10,28 +10,12 @@ A single virtual `COM31` shows up in Device Manager, opens via
 pyserial, accepts writes (discards them), and responds to standard
 serial IOCTLs without crashing.
 
-### Prerequisites (verify before starting)
-- `bcdedit /set testsigning on` ran + reboot completed (see `SETUP_VM.md`).
-  "Test Mode" watermark visible in lower-right corner.
-- WDK + MSVC v143 Spectre-mitigated libs installed (else first build
-  fails with `LNK1318 unrecognized library ...`).
-- All `pnputil` / driver-install commands below MUST run from an
-  **elevated** command prompt (Run as Administrator). Non-elevated
-  invocations fail silently with misleading "Access denied" results.
-
 ### Steps
 
-1. `git clone https://github.com/microsoft/Windows-driver-samples.git C:\src\winsamples`.
-   The VirtualSerial2 sample lives at `winsamples\serial\VirtualSerial2\`.
-   If Microsoft has reorganised the repo and that path is gone, search
-   `git -C C:\src\winsamples grep -l VirtualSerial2 -- "*.sln"` for
-   the moved location before improvising.
+1. `git clone https://github.com/microsoft/Windows-driver-samples.git C:\src\winsamples`
 2. Open `C:\src\winsamples\serial\VirtualSerial2\VirtualSerial2.sln` in Visual Studio 2022
 3. Build for `Debug | x64`. Confirm `VirtualSerial2.dll`, `.inf`, and `.cat` files appear in the output dir.
-   `Release` is not required at this phase — Phase 4 may need a
-   rebuild because Win 11 24H2 with HVCI on is stricter about
-   Debug-built drivers.
-4. Install the unmodified sample with `pnputil` (elevated cmd):
+4. Install the unmodified sample with `pnputil`:
    ```cmd
    pnputil /add-driver VirtualSerial2.inf /install
    ```
@@ -107,11 +91,8 @@ per pair**, sharing a ring buffer.
   hid2vspctl list                      :: prints all pairs + state
   hid2vspctl destroy COM31             :: removes pair from registry
   ```
-- Trigger re-enumeration with `WdfFdoUpdateChildDescriptionAsPresent`
-  on the bus FDO (forces dynamic-bus child re-evaluation), or with
-  `CM_Reenumerate_DevNode` from user space (CfgMgr32 API). Note: the
-  often-cited `WdfDeviceUpdateInterruptOnKnownDevice` does NOT exist
-  — that is a confabulation; do not waste time grepping for it.
+- Trigger re-enumeration with `WdfDeviceUpdateInterruptOnKnownDevice`
+  or programmatic `Cm_Reenumerate_Device`.
 
 ### Registry persistence
 - Pairs survive reboot (no "lose state" failure mode like HHD Free tier).

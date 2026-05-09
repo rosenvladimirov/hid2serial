@@ -10,6 +10,9 @@
 **/*.vcxproj.filters
 **/*.aps
 
+# NuGet restore output (Microsoft.Windows.WDK + SDK CPP packages)
+**/packages/
+
 # Driver-specific build outputs
 **/*.dll
 **/*.sys
