@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>hid2serial</title>
+<meta name="description" content="v0.1 — Linux only."/>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 5 3'><rect width='5' height='3' fill='%23ffffff'/><rect width='5' height='1' y='1' fill='%2300966E'/><rect width='5' height='1' y='2' fill='%23D62612'/></svg>"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;0,700;1,400&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#fff;--bg2:#F5F8FD;--card:#fff;--ink:#2B3A55;--soft:#5C6E8E;--faint:#90A0BD;
+ --blue:#5E86CE;--blue-deep:#3F62A8;--blue-soft:#DCE7F8;--blue-wash:#EEF4FC;--rule:#D6E2F1;--rule2:#E6EEF9;
+ --sh:0 20px 56px rgba(108,148,214,.20);--sh-s:0 10px 30px rgba(108,148,214,.14);
+ --disp:'Spectral',Georgia,serif;--ui:'Golos Text',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--ui);font-size:15.5px;line-height:1.65;
+ background-image:radial-gradient(1000px 440px at 84% -12%,rgba(108,148,214,.06),transparent 62%),
+  linear-gradient(rgba(94,134,206,.016) 1px,transparent 1px),linear-gradient(90deg,rgba(94,134,206,.016) 1px,transparent 1px);
+ background-size:auto,56px 56px,56px 56px}
+a{color:var(--blue-deep);text-decoration:none}.mono{font-family:var(--mono)}
+header{position:sticky;top:0;z-index:9;background:rgba(238,244,252,.86);backdrop-filter:blur(12px);border-bottom:1px solid var(--rule)}
+.bar{display:flex;align-items:center;gap:18px;max-width:1180px;margin:0 auto;padding:14px 26px}
+.brand{font-family:var(--mono);font-weight:700}.brand b{color:var(--blue-deep)}
+.bar .sp{margin-left:auto}
+.gh{font-family:var(--mono);font-size:12px;border:1px solid var(--rule);background:var(--card);padding:8px 14px;border-radius:10px}
+.gh:hover{border-color:var(--blue)}
+.hero{max-width:1180px;margin:0 auto;padding:40px 26px 18px}
+.kick{font-family:var(--mono);font-size:11.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--blue-deep);display:flex;align-items:center;gap:11px;margin-bottom:12px}
+.kick::before{content:"";width:32px;height:2px;background:var(--blue)}
+.hero h1{font-family:var(--disp);font-weight:700;font-size:clamp(1.8rem,3.4vw,2.7rem);line-height:1.08;letter-spacing:-.012em}
+.hero .tag{color:var(--soft);font-size:clamp(1rem,1.2vw,1.12rem);max-width:70ch;margin-top:12px}
+.chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
+.cs{background:var(--card);border:1px solid var(--rule);padding:10px 16px;box-shadow:var(--sh-s);border-radius:2px}
+.cs b{font-family:var(--disp);font-weight:700;font-size:1.25rem;color:var(--blue-deep);display:block;line-height:1.05}
+.cs span{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.wrap{max-width:1180px;margin:34px auto 0;padding:0 26px 80px}
+.sec-lbl{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin:38px 0 14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.mc{background:var(--card);border:1px solid var(--rule);border-radius:2px;padding:16px 18px;box-shadow:var(--sh-s);transition:.16s}
+.mc:hover{border-color:var(--blue);box-shadow:var(--sh)}
+.mc-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.mc-slug{font-size:12px;color:var(--blue-deep);font-weight:700}
+.mc-v{margin-left:auto;font-size:10.5px;color:var(--faint)}
+.mc strong{display:block;font-size:14.5px;margin-bottom:4px}
+.mc p{color:var(--soft);font-size:13px;line-height:1.5}
+.reader{background:var(--card);border:1px solid var(--rule);border-radius:14px;box-shadow:var(--sh);margin-top:18px;padding:34px 44px 56px}
+.doc{font-size:15.5px;line-height:1.72}
+.doc h1,.doc h2,.doc h3,.doc h4{font-family:var(--disp);font-weight:700;line-height:1.2;margin:1.6em 0 .55em;letter-spacing:-.01em}
+.doc h1{font-size:1.9rem;margin-top:.1em}
+.doc h2{font-size:1.45rem;padding-bottom:.26em;border-bottom:1px solid var(--rule2)}
+.doc h3{font-size:1.18rem;color:var(--blue-deep)}
+.doc p{margin:.8em 0}.doc ul,.doc ol{margin:.7em 0 .9em 1.4em}.doc li{margin:.3em 0}
+.doc a{border-bottom:1px solid var(--blue-soft)}
+.doc code{font-family:var(--mono);font-size:.86em;background:var(--blue-wash);padding:.14em .42em;border-radius:6px;color:var(--blue-deep)}
+.doc pre{background:#F4F8FD;border:1px solid var(--rule);border-radius:12px;padding:18px 20px;overflow:auto}
+.doc pre code{background:none;padding:0;color:var(--ink)}
+.doc table{border-collapse:collapse;margin:1em 0;font-size:14px;width:100%}
+.doc th,.doc td{border:1px solid var(--rule);padding:8px 12px;text-align:left}
+.doc th{background:var(--blue-wash);color:var(--blue-deep)}
+.doc img{max-width:100%;border-radius:8px}
+footer{max-width:1180px;margin:0 auto;padding:30px 26px 60px;color:var(--faint);font-family:var(--mono);font-size:12px}
+@media(max-width:640px){.reader{padding:24px 22px}}
+</style>
+</head>
+<body>
+<header><div class="bar">
+ <span class="brand"><b>hid2serial</b></span>
+ <span class="sp"></span>
+ <a class="gh" href="https://github.com/rosenvladimirov/hid2serial">GitHub ↗</a>
+</div></header>
+
+<section class="hero">
+ <div class="kick">LGPL-3</div>
+ <h1>hid2serial</h1>
+ <p class="tag">v0.1 — Linux only.</p>
+ <div class="chips"><div class="cs"><b>0</b><span>modules</span></div><div class="cs"><b>LGPL-3</b><span>license</span></div></div>
+</section>
+
+<div class="wrap">
+ <div class="sec-lbl">0 modules</div>
+ <div class="grid"><p style="color:var(--soft)">Single-module / meta repo.</p></div>
+ <div class="sec-lbl">Documentation</div>
+ <div class="reader"><div class="doc"><blockquote>
+<p>Daemon that turns a USB HID barcode scanner into a virtual serial port.</p>
+</blockquote>
+<p>For Odoo POS, fiscal-printer, and legacy POS integrations that expect a
+serial barcode device, but the customer's hardware is a cheap USB
+"keyboard wedge" scanner. <code>hid2serial</code> runs on the host (or any PC the
+scanner is plugged into), grabs the scanner exclusively so its keys
+don't bleed into the focused window, and re-emits each scan on a
+virtual serial port (<code>/dev/ttyV0</code> on Linux, COMxx on Windows).</p>
+<p>The Bulgarian retail integration we ship this with (<code>Odoo.ErpNet.FP</code>)
+runs the proxy in Docker. The Docker container reads the pty as a
+plain serial device — no special HID support is required inside the
+container. <code>hid2serial</code> lives on the host; the proxy reacts.</p>
+<h2 id="architecture">Architecture</h2>
+<pre><code>┌──────────────┐  evdev grab()    ┌─────────────────┐  pty (/dev/ttyV0)  ┌─────────────────┐
+│ HID Scanner  │ ────────────────▶│  hid2serial     │ ─────────────────▶ │  Consumer       │
+│ (USB kbd)    │                  │  daemon (host)  │                    │  ErpNet.FP /    │
+└──────────────┘                  │  - keymap (US)  │                    │  Odoo POS /     │
+                                  │  - line buffer  │                    │  fiscal driver  │
+                                  │  - terminator   │                    └─────────────────┘
+                                  └─────────────────┘
+</code></pre>
+<p>On Linux the consumer runs in any namespace (host, Docker container with
+<code>/dev</code> mount, anywhere with read permission on the symlink target). The
+pty kernel driver doesn't care; <code>pyserial</code> opens it like any UART.</p>
+<h2 id="status">Status</h2>
+<p><strong>v0.1 — Linux only.</strong> Windows backend is in the design (RawInput +
+com0com) but not yet implemented; PRs welcome.</p>
+<h2 id="installation">Installation</h2>
+<pre><code class="language-bash"># As root:
+pip install -e .[linux]              # or pip install hid2serial[linux] when published
+
+# Optional — if you want non-root operation:
+groupadd -f input                    # usually already exists
+usermod -aG input &lt;your-service-user&gt;
+cp service/udev/99-hid2serial.rules /etc/udev/rules.d/
+udevadm control --reload &amp;&amp; udevadm trigger
+
+# systemd:
+cp service/hid2serial.service /etc/systemd/system/
+mkdir -p /etc/hid2serial
+cp config.example.yaml /etc/hid2serial/config.yaml
+systemctl daemon-reload
+systemctl enable --now hid2serial
+</code></pre>
+<h2 id="configuration">Configuration</h2>
+<p>Edit <code>/etc/hid2serial/config.yaml</code>. Minimal example:</p>
+<pre><code class="language-yaml">readers:
+  - name: pos1
+    match: { vid: 0x0c2e, name_regex: &quot;Honeywell|Voyager&quot; }
+    output:
+      linux: { symlink: /dev/ttyV0, permissions: &quot;0666&quot; }
+    framing:
+      terminator: &quot;\r\n&quot;
+</code></pre>
+<p>The full schema lives in <a href="config.example.yaml"><code>config.example.yaml</code></a>.</p>
+<h2 id="cli">CLI</h2>
+<pre><code class="language-bash">hid2serial list-readers       # what HID-keyboard devices does the kernel see?
+hid2serial doctor             # are evdev / udev / systemd ready?
+hid2serial run -c /etc/hid2serial/config.yaml
+hid2serial test --reader pos1 # capture one scan and print to stdout
+</code></pre>
+<h2 id="wiring-with-odooerpnetfp">Wiring with <code>Odoo.ErpNet.FP</code></h2>
+<p>Once the daemon is up and <code>/dev/ttyV0</code> exists, point the proxy at it as
+a plain serial reader:</p>
+<pre><code class="language-yaml"># config.yaml of Odoo.ErpNet.FP
+readers:
+  - id: hw1
+    transport: serial
+    port: /dev/ttyV0
+    baudrate: 9600
+    encoding: ascii
+    webhooks:
+      - https://erp.example.com/erp_net_fp/reader/scan
+</code></pre>
+<p>That's the whole integration. The Docker container with <code>-v /dev:/dev</code>
+sees the pty just like any other serial device.</p>
+<h2 id="the-three-traps-to-avoid">The three traps to avoid</h2>
+<ol>
+<li>
+<p><strong>Scancode leakage</strong> — without the exclusive <code>grab()</code> every scan
+   also types into whatever window has focus. We always grab on Linux;
+   the Windows backend will use a per-device RawInput filter.</p>
+</li>
+<li>
+<p><strong>Keyboard layout corruption</strong> — many BG installations have the
+   system keymap set to bg-cyrillic. A scanner programmed as US QWERTY
+   emitting <code>1234</code> may render as Cyrillic letters depending on focus.
+   <code>hid2serial</code> translates scancodes itself with a hardcoded US keymap,
+   ignoring the system layout entirely.</p>
+</li>
+<li>
+<p><strong>Buffering &amp; framing</strong> — readers send keystrokes one at a time at
+   high speed. The daemon buffers until the configured terminator key,
+   then flushes the full barcode to the serial side as one atomic
+   write. Without buffering, consumers see partial reads.</p>
+</li>
+</ol>
+<h2 id="license">License</h2>
+<p>LGPL-3.0-or-later. See <a href="LICENSE">LICENSE</a>.</p>
+<hr>
+<p><em>Authored by Rosen Vladimirov · Assisted by Claude Code</em></p></div></div>
+</div>
+<footer>Generated from README + manifests · <a href="https://github.com/rosenvladimirov/hid2serial">hid2serial</a></footer>
+</body>
+</html>
